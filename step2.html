@@ -1,0 +1,193 @@
+﻿<!DOCTYPE html>
+
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="utf-8" />
+    <title>yeewwz</title>
+</head>
+<body bgcolor="black">
+    <canvas id="canvas" style="margin: auto; display: block;"></canvas>
+    <script>
+        // Решает пропорцию value/maximum = x/scale, по сути отображает числа из одного интервала на другой
+        const scale = (value, maximum, scale) => Math.round(Math.abs(value) / maximum * scale);
+
+        const toRGB = (value, maximum) => {
+            let color = scale(value, maximum, 0xFFFFFF).toString(16);
+            if (color.length < 6) {
+                color = "0".repeat(6 - color.length) + color;
+            }
+            return "#" + color;
+        };
+
+        // Периодичная линейная функция y=x
+        const periodX_0 = (x, n) => n / 2 - Math.abs(x - n / 2);
+        const periodX_1 = (x, n) => Math.abs(x - n / 2);
+        const periodX = [{
+            f: periodX_0,
+            max: (n) => periodX_0(n / 2, n)
+        }/*, {
+            f: periodX_1,
+            max: (n) => periodX_1(0, n)
+        }*/];
+
+        // Периодичная функция y=x^2
+        const periodX2_0 = (x, n) => Math.pow(x - n / 2, 2);
+        const periodX2_1 = (x, n) => Math.pow(n / 2, 2) - Math.pow(x - n / 2, 2);
+        const periodX2_2 = (x, n) => Math.pow(Math.abs(x - n / 2) - n / 2, 2);
+        const periodX2_3 = (x, n) => Math.pow(n / 2, 2) - Math.pow(Math.abs(x - n / 2) - n / 2, 2);
+        const periodX2 = [/*{
+            f: periodX2_0,
+            max: (n) => periodX2_0(0, n)
+        }, */{
+            f: periodX2_1,
+            max: (n) => periodX2_1(n / 2, n)
+        }, {
+            f: periodX2_2,
+            max: (n) => periodX2_2(n / 2, n)
+        }/*,{
+            f: periodX2_3,
+            max: (n) => periodX2_3(0, n)
+        }*/];
+
+        // Периодичная функция y=x^3
+        const periodX3_0 = (x, n) => Math.pow(n / 4, 3) - Math.pow(Math.abs(x - n / 2) - n / 4, 3);
+        const periodX3 = [{
+            f: periodX3_0,
+            max: (n) => periodX3_0(n / 2, n)
+        }];
+
+        // Периодичная Функция y=ln(x)
+        const periodLN_0 = (x, n) => {
+            if (x === 0 || x === n) {
+                return 0;
+            }
+            return Math.log( - Math.abs(x - n / 2) + n / 2);
+        };
+        const periodLN_1 = (x, n) => {
+            if (x === n /2) {
+                return 0;
+            }
+            return Math.log(Math.abs(x - n / 2));
+        };
+        const periodLN = [{
+            f: periodLN_0,
+            max: (n) => periodLN_0(n / 2, n)
+        }/*, {
+            f: periodLN_1,
+            max: (n) => periodLN_1(0, n)
+        }*/];
+
+        const periodSin = (x, n) => Math.sin(Math.PI * x / n);
+        const periodTg = (x, n) => {
+            let add = 0;
+            if (x === n) add = -0.0001;
+            return Math.tan((Math.PI / 2 + add) * x / n);
+        };
+        const periodTrig = [{
+            f: periodSin,
+            max: (n) => 1
+        }/*, {
+            f: periodTg,
+            max: (n) => periodTg(n, n)
+        }*/];
+
+        const N = 100;
+        let pixelSizeX = 8;
+        let pixelSizeY = 8;
+        const timeStep = 20;
+        const timeMax = 10000;
+        function* generateNextXY() {
+            const period_functions = periodX.concat(periodX2, periodX3, periodLN, periodTrig);
+            const length = period_functions.length;
+            while (true) {
+                for (let i = 0, n = length * length; i < n; i++) {
+                    const x = Math.trunc(i / length);
+                    const y = Math.trunc(i % length);
+                    const f_x = period_functions[x].f;
+                    const x_max = period_functions[x].max;
+                    const f_y = period_functions[y].f;
+                    const y_max = period_functions[y].max;
+                    yield {
+                        f: (x, y, t) => f_x(x, N) * f_y(y, N) * periodX[0].f(t, timeMax),
+                        maximum: x_max(N) * y_max(N) * periodX[0].max(timeMax),
+                        current_x: f_x.name,
+                        current_y: f_y.name
+                    }
+                }
+            }
+        }
+
+        const canvas = document.getElementById('canvas');
+        let stop = false;
+        window.onload = () => {
+            const ctx = canvas.getContext('2d');
+
+            canvas.width = N * pixelSizeX;
+            canvas.height = N * pixelSizeY;
+
+            window.onresize();
+
+            const nextXY = generateNextXY();
+            let f, maximum, current_x, current_y;
+
+            let t = 0;
+            const draw = () => {
+                if (stop) {
+                    requestAnimationFrame(draw);
+                    return;
+                }
+                console.log('draw', t);
+
+                if (t === 0) {
+                    ({ f, maximum, current_x, current_y} = nextXY.next().value);
+                }
+
+                for (let i = 0; i < N; i++) {
+                    for (let j = 0; j < N; j++) {
+                        ctx.fillStyle = toRGB(f(i, j, t), maximum);
+                        ctx.fillRect(i * pixelSizeX, j * pixelSizeY, pixelSizeX, pixelSizeY);
+                    }
+                }
+
+                ctx.font = 'bold 20px Times New Roman';
+                ctx.fillStyle = 'white';
+                ctx.fillText(`x: ${current_x}, y:${current_y}`, 10, 30);
+
+                t += timeStep;
+                t %= timeMax;
+                
+                requestAnimationFrame(draw);
+            };
+            draw();
+        };
+
+        window.onkeydown = (ev) => {
+            if (ev.key === ' ') {
+                stop = !stop;
+            }
+        };
+
+        window.onresize = () => {
+            // let height = document.documentElement.clientHeight;
+            // let width = document.documentElement.clientWidth;
+            // height = Math.trunc(height * 0.98); // height - height % 100;
+            // width = Math.trunc(width * 0.98); // width - width % 100;
+            //
+            // pixelSizeX = Math.trunc(width / N);
+            // pixelSizeY = Math.trunc(height / N);
+            //
+            // canvas.width = pixelSizeX * (N+1);
+            // canvas.height = pixelSizeY * (N+1);
+
+            let height = document.documentElement.clientHeight;
+            height = Math.trunc(height * 0.98);
+
+            pixelSizeX = Math.trunc(height / N);
+            pixelSizeY = Math.trunc(height / N);
+
+            canvas.width = pixelSizeX * (N+1);
+            canvas.height = pixelSizeY * (N+1);
+        };
+    </script>
+</body>
+</html>

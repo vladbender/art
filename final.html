@@ -1,0 +1,194 @@
+﻿<!DOCTYPE html>
+<html lang="ru" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="utf-8" />
+    <title>yeewwz</title>
+</head>
+<body bgcolor="black">
+    <canvas id="canvas" style="margin: auto; display: block;"></canvas>
+    <script>
+        const DEBUG = false;
+
+        // Решает пропорцию value/maximum = x/scale, по сути отображает числа из одного интервала на другой
+        const scale = (value, maximum, scale) => Math.round(Math.abs(value) / maximum * scale);
+
+        const toRGB = (value, maximum) => {
+            const color = scale(value, maximum, 0xFFFFFF);
+            const r = (color & 0xFF0000) >> 16;
+            const g = (color & 0x00FF00) >> 8;
+            const b = (color & 0x0000FF);
+            return { r, g, b };
+        };
+
+        const timeToColor = (t, t_max) => ({ color_to: scale(t, t_max, 0xFF) });
+
+        const X = { f: (x, n) => n / 2 - Math.abs(x - n / 2) };
+        X.max = (n) => X.f(n / 2, n);
+
+        const X2 = { f: (x, n) => Math.pow(Math.abs(x - n / 2) - n / 2, 2) };
+        X2.max = (n) => X2.f(n / 2, n);
+
+        const X3 = { f: (x, n) => Math.pow(n / 4, 3) - Math.pow(Math.abs(x - n / 2) - n / 4, 3) };
+        X3.max = (n) => X3.f(n / 2, n);
+
+        const LN = { f: (x, n) => {
+            if (x === 0 || x === n) return 0;
+            return Math.log( - Math.abs(x - n / 2) + n / 2);
+        }};
+        LN.max = (n) => LN.f(n / 2, n);
+
+        const SIN = { f: (x, n) => Math.sin(Math.PI * x / n) };
+        SIN.max = (n) => 1;
+
+        const N = 100;
+        let pixelSizeX = 8;
+        let pixelSizeY = 8;
+        const timeMax = 10000;
+
+        const defaultBG = () => 'rgb(0,0,0)';
+        const greenLimit = 128;
+        const getFAndMaximum = (f_x, f_y) => ({
+            f: (x, y, t) => f_x.f(x, N) * f_y.f(y, N) * X.f(t, timeMax),
+            maximum: f_x.max(N) * f_y.max(N) * X.max(timeMax)
+        });
+        const hsl = ({ r, g, b }, { color_to }) =>
+            g > greenLimit
+                ? `hsl(${scale(color_to, 0xFF, 360)},100%,${scale(g, 0xFF, 100)}%)`
+                : '';
+        const hsl_delay = delay => ({ color_to }) => `hsl(${(scale(color_to, 0xFF, 360) + delay) % 360},100%,35%)`;
+        const hsl_120 = hsl_delay(120);
+        const hsl_180 = hsl_delay(180);
+        const states = [{
+            ...getFAndMaximum(SIN, SIN),
+            toFG: ({ r, g, b }) => g > greenLimit ? `rgb(${g},${g},${g})` : '',
+            toBG: defaultBG,
+            timeStep: 2
+        }, {
+            ...getFAndMaximum(LN, X3),
+            toFG: ({ r, g, b }) => g > greenLimit ? `rgb(0,0,${g})` : '',
+            toBG: ({ color_to }) => `rgb(${color_to},0,0)`,
+            timeStep: 2
+        }, {
+            ...getFAndMaximum(LN, LN),
+            toFG: hsl,
+            toBG: ({ color_to }) => `hsl(${(scale(color_to, 0xFF, 360) + 15) % 360},100%,35%)`,
+            timeStep: 2
+        }, {
+            ...getFAndMaximum(SIN, X2),
+            toFG: hsl,
+            toBG: hsl_120,
+            timeStep: 2
+        }, {
+            ...getFAndMaximum(LN, X2),
+            toFG: hsl,
+            toBG: hsl_120,
+            timeStep: 2
+        }, {
+            ...getFAndMaximum(X3, SIN),
+            toFG: hsl,
+            toBG: hsl_180,
+            timeStep: 2
+        }, {
+            ...getFAndMaximum(SIN, LN),
+            toFG: hsl,
+            toBG: hsl_180,
+            timeStep: 2
+        }, {
+            ...getFAndMaximum(X3, X3),
+            toFG: ({ r, g, b }, { color_to }) => `hsl(${scale(g, 0xFF, 360)},100%,50%)`,
+            toBG: defaultBG,
+            timeStep: 2
+        }, {
+            ...getFAndMaximum(X2, X2),
+            toFG: ({ r, g, b }, { color_to }) => `hsl(${scale(g, 0xFF, 360)},100%,${scale(b, 0xFF, 50) + 25}%)`,
+            toBG: defaultBG,
+            timeStep: 10
+        }, {
+            ...getFAndMaximum(X2, X3),
+            toFG: ({ r, g, b }, { color_to }) => `rgb(${b},${r},${g})`,
+            toBG: defaultBG,
+            timeStep: 10
+        }];
+
+        const canvas = document.getElementById('canvas');
+        let stop = false;
+        window.onload = () => {
+            const ctx = canvas.getContext('2d');
+
+            canvas.width = N * pixelSizeX;
+            canvas.height = N * pixelSizeY;
+
+            window.onresize();
+
+            // const nextState = generateNextState();
+            let f, maximum, toFG, toBG, timeStep;
+
+            let indexState = 0;
+            let t = 0;
+            let skip = false;
+            const draw = () => {
+                if (stop) {
+                    // requestAnimationFrame(draw);
+                    return;
+                }
+                skip = !skip;
+                if (skip) {
+                    console.log('skip');
+                    // requestAnimationFrame(draw);
+                    return;
+                }
+                console.log('draw', t);
+
+                if (t === 0) {
+                    ({ f, maximum, toFG, toBG, timeStep } = states[indexState]);
+                    indexState = (indexState + 1) % states.length;
+                }
+
+                const color_time = timeToColor(t, timeMax);
+
+                ctx.fillStyle = toBG(color_time);
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                for (let i = 0; i < N; i++) {
+                    for (let j = 0; j < N; j++) {
+                        const color = toFG(toRGB(f(i, j, t), maximum), color_time);
+                        if (color) {
+                            ctx.fillStyle = color;
+                            ctx.fillRect(i * pixelSizeX, j * pixelSizeY, pixelSizeX, pixelSizeY);
+                        }
+                    }
+                }
+
+                if (DEBUG) {
+                    t += 10;
+                } else {
+                    t += timeStep * 2; // из за skip
+                }
+                t %= timeMax;
+
+                // requestAnimationFrame(draw);
+            };
+            draw();
+        };
+
+        window.onkeydown = (ev) => {
+            if (ev.key === ' ') {
+                stop = !stop;
+            }
+        };
+
+        window.onresize = () => {
+            let width = document.documentElement.clientWidth;
+            let height = document.documentElement.clientHeight;
+            width = Math.trunc(width * 0.98);
+            height = Math.trunc(height * 0.98);
+
+            pixelSizeX = Math.trunc(width / N);
+            pixelSizeY = Math.trunc(height / N);
+
+            canvas.width = pixelSizeX * (N+1);
+            canvas.height = pixelSizeY * (N+1);
+        };
+    </script>
+</body>
+</html>

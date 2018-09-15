@@ -1,0 +1,81 @@
+﻿<!DOCTYPE html>
+
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="utf-8" />
+    <title>yeewwz</title>
+</head>
+<body bgcolor="black">
+    <canvas id="canvas" style="margin: auto; display: block;"></canvas>
+    <script>
+        // Решает пропорцию value/maximum = x/scale, по сути отображает числа из одного интервала на другой
+        const scale = (value, maximum, scale) => Math.round(Math.abs(value) / maximum * scale);
+
+        const toRGB = (value, maximum) => {
+            let color = scale(value, maximum, 0xFFFFFF).toString(16);
+            if (color.length < 6) {
+                color = "0".repeat(6 - color.length) + color;
+            }
+            return "#" + color;
+        };
+
+        // Параметры настройки изображения
+        // Функция - принимает 3 агрумента: координаты x, y и время t
+        const f = (x, y, t) => Math.sin(Math.PI * x / N) * Math.sin(Math.PI * y / N) * t;
+        // Длина стороны холста, в пикселях, то есть N*N пикселей
+        const N = 100;
+        // Размер одного пикселя...  В ПИКСЕЛЯХ, ОХУЕТЬ ДА
+        let pixelSize = 8;
+        // Шаг по времени
+        const timeStep = 10;
+        // Максимальное значение времени, после которого история начнется сначала
+        const timeMax = 10000;
+        // По хорошему, оценочное значение максимума функции, но можно экспериментировать
+        const maximum = timeMax;
+
+        const canvas = document.getElementById('canvas');
+        let stop = false;
+        window.onload = () => {
+            const ctx = canvas.getContext('2d');
+
+            canvas.width = N * pixelSize;
+            canvas.height = N * pixelSize;
+
+            window.onresize();
+
+            let t = 0;
+            const draw = () => {
+                if (stop) {
+                    requestAnimationFrame(draw);
+                    return;
+                }
+                for (let i = 0; i < N; i++) {
+                    for (let j = 0; j < N; j++) {
+                        ctx.fillStyle = toRGB(f(i, j, t), maximum);
+                        ctx.fillRect(i * pixelSize, j * pixelSize, pixelSize, pixelSize);
+                    }
+                }
+                t += timeStep;
+                t %= timeMax;
+                console.log('draw', t);
+                requestAnimationFrame(draw);
+            };
+            draw();
+        };
+
+        window.onkeydown = (ev) => {
+            if (ev.key === ' ') {
+                stop = !stop;
+            }
+        };
+
+        window.onresize = () => {
+            let height = document.documentElement.clientHeight;
+            height = height - height % 100;
+            canvas.height = height;
+            canvas.width = height;
+            pixelSize = Math.trunc(height / N);
+        };
+    </script>
+</body>
+</html>
